@@ -40,31 +40,29 @@ Download a pre-built binary from the [releases page](https://github.com/TONresis
 
 ## Quick start
 
+### With an AI agent (Claude Code, etc.)
+
+Install the `tonbrowser` skill, then talk to the agent:
+
+```
+> go to piracy.ton and take a screenshot
+> what's on skills.ton?
+> navigate to how-to-resist.ton and read the full page
+```
+
+The agent handles launching, connecting, navigating, and reading automatically.
+
+### CLI usage
+
 ```sh
-# Install Tonnet Browser (skip if already installed)
-agent-tonbrowser install
-
-# Launch Tonnet Browser with CDP enabled
-agent-tonbrowser launch
-
-# Connect the agent to the running browser
-agent-tonbrowser connect
-
-# Navigate to a .ton site via the address bar
-agent-tonbrowser fill "input" "piracy.ton"
-agent-tonbrowser press Enter
-
-# Read page content from the first .ton tab
-agent-tonbrowser --tab 1 eval 'document.body.innerText.substring(0, 500)'
-
-# Take a screenshot
-agent-tonbrowser --tab 1 screenshot page.png
-
-# Check browser and proxy status
-agent-tonbrowser status
-
-# Stop everything
-agent-tonbrowser close
+agent-tonbrowser install                          # download Tonnet Browser
+agent-tonbrowser launch                           # start with CDP enabled
+agent-tonbrowser connect                          # connect the daemon
+agent-tonbrowser fill "input" "piracy.ton"        # type in address bar
+agent-tonbrowser press Enter                      # navigate
+agent-tonbrowser --tab 1 screenshot page.png      # screenshot the .ton page
+agent-tonbrowser --tab 1 eval 'document.title'    # read page title
+agent-tonbrowser close                            # stop browser and daemon
 ```
 
 ## Architecture
