@@ -26,23 +26,13 @@
 
 ## Installation
 
-**From source:**
+### As a skill (for AI agents)
 
 ```sh
-go install github.com/TONresistor/agent-ton-browser/cmd/agent-tonbrowser@latest
+npx skills add TONresistor/agent-ton-browser
 ```
 
-**From binary:**
-
-Download a pre-built binary from the [releases page](https://github.com/TONresistor/agent-ton-browser/releases). Archives are provided for Linux and macOS (amd64/arm64) and Windows (amd64).
-
-**Prerequisite:** Tonnet Browser must be installed separately. Use `agent-tonbrowser install` to download it, or install it manually from the [Tonnet Browser releases](https://github.com/TONresistor/Tonnet-Browser/releases).
-
-## Quick start
-
-### With an AI agent (Claude Code, etc.)
-
-Install the `tonbrowser` skill, then talk to the agent:
+This installs the `tonbrowser` skill into your project. Your AI agent can then browse .ton sites:
 
 ```
 > go to piracy.ton and take a screenshot
@@ -50,9 +40,17 @@ Install the `tonbrowser` skill, then talk to the agent:
 > navigate to how-to-resist.ton and read the full page
 ```
 
-The agent handles launching, connecting, navigating, and reading automatically.
+### Binary
 
-### CLI usage
+Download a pre-built binary from the [releases page](https://github.com/TONresistor/agent-ton-browser/releases), or build from source:
+
+```sh
+go install github.com/TONresistor/agent-ton-browser/cmd/agent-tonbrowser@latest
+```
+
+**Prerequisite:** [Tonnet Browser](https://github.com/TONresistor/Tonnet-Browser/releases) must be installed separately, or use `agent-tonbrowser install` to download it.
+
+## Quick start
 
 ```sh
 agent-tonbrowser install                          # download Tonnet Browser
