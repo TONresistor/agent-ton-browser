@@ -2,10 +2,7 @@
   <h1>agent-ton-browser</h1>
   <p>CLI tool and AI agent skill for browsing .ton sites through Tonnet Browser via Chrome DevTools Protocol.</p>
   <p>
-    <a href="https://github.com/TONresistor/agent-ton-browser/actions/workflows/ci.yml"><img src="https://github.com/TONresistor/agent-ton-browser/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/TONresistor/agent-ton-browser/releases"><img src="https://img.shields.io/github/v/release/TONresistor/agent-ton-browser" alt="Release"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/TONresistor/agent-ton-browser" alt="License"></a>
-    <a href="https://goreportcard.com/report/github.com/TONresistor/agent-tonbrowser"><img src="https://goreportcard.com/badge/github.com/TONresistor/agent-tonbrowser" alt="Go Report Card"></a>
   </p>
 </div>
 
