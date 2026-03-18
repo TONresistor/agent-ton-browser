@@ -151,3 +151,18 @@ func (s *Session) Disconnect() {
 func (s *Session) Context() context.Context {
 	return s.ctx
 }
+
+// DiscoverPageTargetByURL finds a page target whose URL contains the given pattern.
+// Returns the target index (usable with ConnectToTarget) or -1 if not found.
+func DiscoverPageTargetByURL(ctx context.Context, port int, urlPattern string) (int, error) {
+	targets, err := discoverAllPageTargets(ctx, port)
+	if err != nil {
+		return -1, fmt.Errorf("discover page target by URL: %w", err)
+	}
+	for i, t := range targets {
+		if strings.Contains(t.URL, urlPattern) {
+			return i, nil
+		}
+	}
+	return -1, nil
+}

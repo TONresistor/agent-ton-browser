@@ -8,6 +8,7 @@ import (
 
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/dom"
+	"github.com/chromedp/cdproto/input"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/chromedp/chromedp/kb"
@@ -137,13 +138,53 @@ var keyNameMap = map[string]string{
 	"Space":     " ",
 }
 
+// modifierMap maps modifier name strings to input.Modifier constants.
+var modifierMap = map[string]input.Modifier{
+	"Ctrl":    input.ModifierCtrl,
+	"Control": input.ModifierCtrl,
+	"Shift":   input.ModifierShift,
+	"Alt":     input.ModifierAlt,
+	"Meta":    input.ModifierMeta,
+	"Cmd":     input.ModifierMeta,
+	"Command": input.ModifierMeta,
+}
+
 // Press sends a key press to the focused element.
-// key should be a key name like "Enter", "Tab", "Escape", or a single character.
+// key may be a simple key name like "Enter", a single character, or a modifier
+// combination like "Ctrl+A", "Shift+Tab", "Alt+F4", "Ctrl+Shift+Z".
 func Press(s *Session, key string) error {
 	ctx, cancel := context.WithTimeout(s.ctx, defaultActionTimeout)
 	defer cancel()
 
-	// Map named keys to kb constants
+	parts := strings.Split(key, "+")
+
+	if len(parts) > 1 {
+		// Parse modifier parts (all but last)
+		var modifiers []input.Modifier
+		for _, mod := range parts[:len(parts)-1] {
+			m, ok := modifierMap[mod]
+			if !ok {
+				return fmt.Errorf("press: unknown modifier %q in %q", mod, key)
+			}
+			modifiers = append(modifiers, m)
+		}
+
+		keyPart := parts[len(parts)-1]
+		// Map named keys via keyNameMap, otherwise lowercase single chars
+		if mapped, ok := keyNameMap[keyPart]; ok {
+			keyPart = mapped
+		} else if runes := []rune(keyPart); len(runes) == 1 {
+			keyPart = strings.ToLower(keyPart)
+		} else {
+			return fmt.Errorf("press: unknown key %q in combination %q", keyPart, key)
+		}
+
+		return chromedp.Run(ctx, chromedp.ActionFunc(func(ctx context.Context) error {
+			return chromedp.KeyEvent(keyPart, chromedp.KeyModifiers(modifiers...)).Do(ctx)
+		}))
+	}
+
+	// No modifier: existing behavior
 	if mapped, ok := keyNameMap[key]; ok {
 		return chromedp.Run(ctx, chromedp.KeyEvent(mapped))
 	}

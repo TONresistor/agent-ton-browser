@@ -151,12 +151,28 @@ func StopDaemon() error {
 	return nil
 }
 
-// EnsureDaemon starts the daemon if not already running.
+// EnsureDaemon starts the daemon if not already running, then auto-connects
+// to a browser on the default CDP port (9222) if the daemon is not yet connected.
 func EnsureDaemon() error {
-	if DaemonRunning() {
-		return nil
+	if !DaemonRunning() {
+		if err := StartDaemon(); err != nil {
+			return err
+		}
 	}
-	return StartDaemon()
+	// Check if daemon is connected to a browser
+	status, err := DaemonStatus()
+	if err != nil {
+		return err
+	}
+	if !status.Connected {
+		// Auto-connect: try default CDP port 9222
+		if err := Connect(9222, -1); err != nil {
+			// Connection failed — browser might not be running, that's ok.
+			// The user will get "not connected" on the next command.
+			return nil
+		}
+	}
+	return nil
 }
 
 // DaemonStatus returns the daemon status from GET /status.
@@ -368,6 +384,42 @@ func SwitchTab(index int) error {
 	_, err := do(http.MethodPost, "/tab/switch", map[string]any{"index": index})
 	if err != nil {
 		return fmt.Errorf("switch tab: %w", err)
+	}
+	return nil
+}
+
+// AnnotatedScreenshot sends POST /annotated-screenshot and returns the saved path
+// and the raw labels JSON array.
+func AnnotatedScreenshot(tab int, path string) (string, json.RawMessage, error) {
+	resp, err := do(http.MethodPost, "/annotated-screenshot", map[string]any{"tab": tab, "path": path})
+	if err != nil {
+		return "", nil, fmt.Errorf("annotated screenshot: %w", err)
+	}
+	var result struct {
+		Path   string          `json:"path"`
+		Labels json.RawMessage `json:"labels"`
+	}
+	if err := json.Unmarshal(resp.Data, &result); err != nil {
+		return "", nil, fmt.Errorf("decode annotated screenshot result: %w", err)
+	}
+	return result.Path, result.Labels, nil
+}
+
+// DNSResolve sends POST /dns/resolve and returns the raw result JSON.
+func DNSResolve(domain string) (json.RawMessage, error) {
+	resp, err := do(http.MethodPost, "/dns/resolve", map[string]any{"domain": domain})
+	if err != nil {
+		return nil, fmt.Errorf("dns resolve: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// ConnectByURL sends POST /connect-url to discover and connect to a browser tab
+// whose URL matches urlPattern on the given CDP port.
+func ConnectByURL(port int, urlPattern string) error {
+	_, err := do(http.MethodPost, "/connect-url", map[string]any{"port": port, "url_pattern": urlPattern})
+	if err != nil {
+		return fmt.Errorf("connect by url: %w", err)
 	}
 	return nil
 }

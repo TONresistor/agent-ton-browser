@@ -14,6 +14,7 @@ import (
 
 	"github.com/TONresistor/agent-tonbrowser/internal/cdp"
 	"github.com/TONresistor/agent-tonbrowser/internal/config"
+	"github.com/TONresistor/agent-tonbrowser/internal/ton"
 )
 
 // DefaultIdleTimeout is how long the daemon waits with no requests before shutting down.
@@ -102,6 +103,40 @@ func (s *Server) Run() error {
 				s.httpSrv.Close()
 				return
 			}
+		}
+	}()
+
+	// Health check: ping browser every 10s. If 2 consecutive pings fail,
+	// nil the session and log a warning. The next command will get
+	// "not connected" error, prompting the user to reconnect.
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		var failures int
+		for range ticker.C {
+			s.mu.Lock()
+			if s.session == nil {
+				s.mu.Unlock()
+				failures = 0
+				continue
+			}
+			sess := s.session
+			s.mu.Unlock()
+
+			_, err := cdp.Eval(sess, "1")
+
+			s.mu.Lock()
+			if err != nil {
+				failures++
+				if failures >= 2 {
+					log.Printf("daemon: browser connection lost (2 consecutive ping failures)")
+					s.session = nil
+					failures = 0
+				}
+			} else {
+				failures = 0
+			}
+			s.mu.Unlock()
 		}
 	}()
 
@@ -219,6 +254,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/get", s.handleGet)
 	mux.HandleFunc("/tabs", s.handleTabs)
 	mux.HandleFunc("/tab/switch", postHandler(s.handleTabSwitch))
+	mux.HandleFunc("/annotated-screenshot", postHandler(s.handleAnnotatedScreenshot))
+	mux.HandleFunc("/dns/resolve", postHandler(s.handleDNSResolve))
+	mux.HandleFunc("/connect-url", postHandler(s.handleConnectByURL))
 }
 
 // --- request body structs ---
@@ -284,6 +322,20 @@ type navigateReq struct {
 
 type tabSwitchReq struct {
 	Index int `json:"index"`
+}
+
+type annotatedScreenshotReq struct {
+	Tab  int    `json:"tab"`
+	Path string `json:"path"`
+}
+
+type dnsResolveReq struct {
+	Domain string `json:"domain"`
+}
+
+type connectURLReq struct {
+	Port       int    `json:"port"`
+	URLPattern string `json:"url_pattern"`
 }
 
 // --- handlers ---
@@ -740,4 +792,90 @@ func (s *Server) handleTabSwitch(w http.ResponseWriter, r *http.Request) {
 	}
 	s.currentTab = req.Index
 	writeJSON(w, true, nil, "")
+}
+
+func (s *Server) handleAnnotatedScreenshot(w http.ResponseWriter, r *http.Request) {
+	req := annotatedScreenshotReq{Tab: -1}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, false, nil, fmt.Sprintf("decode: %v", err))
+		return
+	}
+
+	s.mu.Lock()
+	s.touch()
+	if s.prepareTab(w, req.Tab) {
+		s.mu.Unlock()
+		return
+	}
+	sess := s.session
+	s.mu.Unlock()
+
+	path, labels, err := cdp.AnnotatedScreenshot(sess, req.Path)
+	if err != nil {
+		writeJSON(w, false, nil, err.Error())
+		return
+	}
+	writeJSON(w, true, map[string]any{"path": path, "labels": labels}, "")
+}
+
+func (s *Server) handleDNSResolve(w http.ResponseWriter, r *http.Request) {
+	var req dnsResolveReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, false, nil, fmt.Sprintf("decode: %v", err))
+		return
+	}
+	s.mu.Lock()
+	s.touch()
+	s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	record, err := ton.ResolveRecord(ctx, req.Domain)
+	if err != nil {
+		writeJSON(w, false, nil, err.Error())
+		return
+	}
+	writeJSON(w, true, record, "")
+}
+
+func (s *Server) handleConnectByURL(w http.ResponseWriter, r *http.Request) {
+	var req connectURLReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, false, nil, fmt.Sprintf("decode: %v", err))
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.touch()
+
+	ctx := context.Background()
+	index, err := cdp.DiscoverPageTargetByURL(ctx, req.Port, req.URLPattern)
+	if err != nil {
+		writeJSON(w, false, nil, err.Error())
+		return
+	}
+	if index < 0 {
+		writeJSON(w, false, nil, "no target matching url pattern found")
+		return
+	}
+
+	sess, err := cdp.ConnectToTarget(ctx, req.Port, index)
+	if err != nil {
+		writeJSON(w, false, nil, fmt.Sprintf("connect to target: %v", err))
+		return
+	}
+
+	if s.session != nil {
+		old := s.session
+		s.session = nil
+		old.Disconnect()
+	}
+	s.session = sess
+	s.port = req.Port
+	s.currentTab = index
+
+	// Retrieve the current URL for the response.
+	pageURL, _ := cdp.GetURL(sess)
+	writeJSON(w, true, map[string]any{"connected": true, "tab": index, "url": pageURL}, "")
 }
