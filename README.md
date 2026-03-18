@@ -1,6 +1,6 @@
 <div align="center">
   <h1>agent-ton-browser</h1>
-  <p>CLI tool and AI agent skill for browsing .ton sites through Tonnet Browser via Chrome DevTools Protocol.</p>
+  <p>CLI tool and AI agent skill for browsing .ton sites through Tonnet Browser.</p>
   <p>
     <a href="https://ton.org"><img src="https://img.shields.io/badge/TON-blockchain-0098EA" alt="TON"></a>
     <a href="https://tonnet.resistance.dog"><img src="https://img.shields.io/badge/Tonnet-Browser-1a1a2e" alt="Tonnet Browser"></a>
