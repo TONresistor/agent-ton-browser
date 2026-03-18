@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/TONresistor/agent-tonbrowser/internal/cdp"
@@ -127,7 +126,7 @@ func StartDaemon() error {
 	}
 
 	cmd := exec.Command(exePath, "daemon", "start")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	setDaemonSysProcAttr(cmd)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start daemon: %w", err)
 	}

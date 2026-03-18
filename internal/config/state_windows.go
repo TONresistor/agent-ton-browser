@@ -2,17 +2,12 @@
 
 package config
 
-import (
-	"os"
-	"syscall"
-)
+import "os"
 
+// isProcessAlive checks if a process is still running on Windows.
+// os.FindProcess always succeeds on Windows, so we attempt Signal(nil)
+// which returns nil only if the process handle is valid and alive.
 func isProcessAlive(proc *os.Process) bool {
-	handle := proc.Handle
-	var code uint32
-	err := syscall.GetExitCodeProcess(syscall.Handle(handle), &code)
-	if err != nil {
-		return false
-	}
-	return code == 259 // STILL_ACTIVE
+	err := proc.Signal(os.Signal(nil))
+	return err == nil
 }

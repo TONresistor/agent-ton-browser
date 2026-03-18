@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/TONresistor/agent-tonbrowser/internal/cdp"
@@ -65,10 +64,8 @@ func (s *Server) Run() error {
 	if data, err := os.ReadFile(pidPath); err == nil {
 		var existingPID int
 		if n, _ := fmt.Sscanf(string(data), "%d", &existingPID); n == 1 {
-			if proc, err := os.FindProcess(existingPID); err == nil {
-				if err := proc.Signal(syscall.Signal(0)); err == nil {
-					return fmt.Errorf("daemon already running with pid %d", existingPID)
-				}
+			if isProcessRunning(existingPID) {
+				return fmt.Errorf("daemon already running with pid %d", existingPID)
 			}
 		}
 	}
