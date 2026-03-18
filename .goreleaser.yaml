@@ -39,7 +39,7 @@ checksum:
 release:
   github:
     owner: TONresistor
-    name: agent-tonbrowser
+    name: agent-ton-browser
 
 changelog:
   sort: asc

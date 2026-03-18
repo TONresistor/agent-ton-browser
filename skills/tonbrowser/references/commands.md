@@ -14,8 +14,8 @@ Binary: `agent-tonbrowser` (locate via `which agent-tonbrowser` or `find ~ -name
 ## Target Selection (--tab)
 
 Tonnet Browser exposes multiple CDP targets:
-- **Tab 0 (or -1)**: Main renderer — the browser UI (address bar, tab bar, status bar)
-- **Tab 1+**: WebContentsViews — the actual .ton page content loaded in each tab
+- **Tab 0 (or -1)**: Main renderer : the browser UI (address bar, tab bar, status bar)
+- **Tab 1+**: WebContentsViews : the actual .ton page content loaded in each tab
 
 **Rule**: Use `--tab 0` to interact with the browser UI (fill address bar, click nav buttons). Use `--tab 1` (or higher) to read/interact with the .ton page content.
 
@@ -25,7 +25,7 @@ curl -s http://127.0.0.1:9222/json/list | python3 -c "
 import sys,json
 for i,t in enumerate(json.load(sys.stdin)):
     if not t.get('url','').startswith('devtools://'):
-        print(f'[{i}] {t.get(\"title\",\"\")} — {t.get(\"url\",\"\")[:80]}')
+        print(f'[{i}] {t.get(\"title\",\"\")} : {t.get(\"url\",\"\")[:80]}')
 "
 ```
 
@@ -137,4 +137,4 @@ agent-tonbrowser tab
 - **Snapshot AX tree is minimal on Electron renderers**: Use `eval 'document.body.innerText'` for text content instead.
 - **Use IIFE for complex eval**: Wrap in `(() => { ... })()` to avoid `const`/`let` redeclaration errors across invocations.
 - **Wait after navigation**: Allow 5-10s for .ton pages to load via TON proxy before reading content.
-- **Screenshot timeout**: If screenshot times out, retry once — the raw CDP executor is reliable but Electron can be slow on first capture.
+- **Screenshot timeout**: If screenshot times out, retry once : the raw CDP executor is reliable but Electron can be slow on first capture.

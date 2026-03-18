@@ -1,6 +1,6 @@
 ---
 name: tonbrowser
-description: Browse .ton sites on the TON decentralized network using agent-tonbrowser CLI. Automate Tonnet Browser via Chrome DevTools Protocol — navigate to .ton domains, take screenshots, read page content, click elements, fill forms, and extract data. Use when the user asks to visit a .ton site, take a screenshot of a .ton page, read content from the TON network, interact with a .ton website, or automate browsing on TON. Triggers include "go to X.ton", "open X.ton", "screenshot X.ton", "what's on X.ton", "browse TON", "navigate to .ton", "check .ton site", "read .ton page".
+description: Browse .ton sites on the TON decentralized network using agent-tonbrowser CLI. Automate Tonnet Browser via Chrome DevTools Protocol : navigate to .ton domains, take screenshots, read page content, click elements, fill forms, and extract data. Use when the user asks to visit a .ton site, take a screenshot of a .ton page, read content from the TON network, interact with a .ton website, or automate browsing on TON. Triggers include "go to X.ton", "open X.ton", "screenshot X.ton", "what's on X.ton", "browse TON", "navigate to .ton", "check .ton site", "read .ton page".
 allowed-tools: Bash(agent-tonbrowser:*), Bash(curl:*), Bash(timeout:*), Bash(sleep:*), Bash(pgrep:*), Bash(pkill:*)
 ---
 
@@ -28,19 +28,19 @@ APPIMAGE=$(find ~/Applications ~/.local/bin /opt -name "*onnet*rowser*.AppImage"
 pgrep -f ton-browser || { "$APPIMAGE" --remote-debugging-port=9222 &>/dev/null & sleep 6; }
 ```
 
-### macOS (DMG — no code signing)
+### macOS (DMG : no code signing)
 Tonnet Browser is **not code-signed**. macOS will block it on first launch.
 ```bash
-# Remove quarantine attribute first (required — no code signing)
+# Remove quarantine attribute first (required : no code signing)
 xattr -cr "/Applications/TON Browser.app"
 # Then launch
 open -a "TON Browser" --args --remote-debugging-port=9222
 sleep 6
 ```
 
-### Windows (NSIS installer — no code signing)
+### Windows (NSIS installer : no code signing)
 ```powershell
-# Remove SmartScreen block (required — no code signing)
+# Remove SmartScreen block (required : no code signing)
 Unblock-File -Path "$env:LOCALAPPDATA\Programs\TON Browser\TON Browser.exe"
 # Launch
 & "$env:LOCALAPPDATA\Programs\TON Browser\TON Browser.exe" --remote-debugging-port=9222
@@ -77,7 +77,7 @@ curl -s http://127.0.0.1:9222/json/list | python3 -c "
 import sys,json
 for i,t in enumerate(json.load(sys.stdin)):
     if not t.get('url','').startswith('devtools://'):
-        print(f'[{i}] {t.get(\"title\",\"\")} — {t.get(\"url\",\"\")[:80]}')
+        print(f'[{i}] {t.get(\"title\",\"\")} : {t.get(\"url\",\"\")[:80]}')
 "
 
 # 5. Read content (tab 1 = .ton page)
@@ -95,7 +95,7 @@ $ATB --tab 0 screenshot /tmp/browser-ui.png
 | 0 | Main renderer (browser UI) | Address bar, tabs, nav buttons, status |
 | 1+ | WebContentsView (.ton page) | Page content, screenshots, interaction |
 
-**Always re-check target order after navigation** — indices can shift. Use the curl snippet or `$ATB tab`.
+**Always re-check target order after navigation** : indices can shift. Use the curl snippet or `$ATB tab`.
 
 ## Key Patterns
 
@@ -133,7 +133,7 @@ $ATB --tab 1 screenshot -f /tmp/full-page.png   # full page capture
 $ATB --tab 0 fill "input" "newsite.ton"
 $ATB --tab 0 press Enter
 sleep 8
-# Re-check targets — the new page may have a different tab index
+# Re-check targets : the new page may have a different tab index
 ```
 
 ### Click a link within the .ton page
@@ -160,12 +160,12 @@ $ATB --tab 0 eval '(() => document.body.innerText.includes("Connected to TON") ?
 | Problem | Fix |
 |---------|-----|
 | `connect: connection refused` | Browser not running. Launch with `--remote-debugging-port=9222`. |
-| `no page target found` | Browser just started — wait a few more seconds for renderer to init. |
-| eval/screenshot timeout | Use `timeout 15 $ATB ...`. Retry once — Electron can be slow on first CDP call. |
+| `no page target found` | Browser just started : wait a few more seconds for renderer to init. |
+| eval/screenshot timeout | Use `timeout 15 $ATB ...`. Retry once : Electron can be slow on first CDP call. |
 | Wrong tab content | Re-check targets with curl `/json/list`. Target order can shift. |
 | `Disconnected` in status bar | TON proxy not started. Click "Connect to TON Network" button first. |
-| Navigation doesn't load | Wait longer (10-15s). TON proxy uses garlic routing — adds latency. |
-| macOS: "app is damaged" | Run `xattr -cr "/Applications/TON Browser.app"` — no code signing. |
+| Navigation doesn't load | Wait longer (10-15s). TON proxy uses garlic routing : adds latency. |
+| macOS: "app is damaged" | Run `xattr -cr "/Applications/TON Browser.app"` : no code signing. |
 | Windows: SmartScreen blocks | `Unblock-File -Path "$env:LOCALAPPDATA\Programs\TON Browser\TON Browser.exe"` |
 
 ## Rules
@@ -173,7 +173,7 @@ $ATB --tab 0 eval '(() => document.body.innerText.includes("Connected to TON") ?
 - **eval over snapshot**: AX tree is minimal on Electron. Use `eval 'document.body.innerText'` for text.
 - **IIFE for eval**: Wrap complex JS in `(() => { ... })()` to prevent redeclaration errors.
 - **Wait after navigation**: .ton pages load via garlic-routed TON proxy. Wait 5-10s.
-- **React inputs**: `fill` uses Ctrl+A before typing — works with React controlled inputs.
+- **React inputs**: `fill` uses Ctrl+A before typing : works with React controlled inputs.
 - **Key names for press**: `Enter`, `Tab`, `Escape`, `Backspace`, `Delete`, `ArrowUp/Down/Left/Right`, `Home`, `End`, `PageUp/Down`, `Space`.
 - **Browser persists**: agent-tonbrowser does NOT close the browser between commands.
 - **timeout wrapper**: Use `timeout 10 $ATB ...` to prevent hanging commands.
