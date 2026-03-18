@@ -12,17 +12,6 @@
 
 `agent-ton-browser` is a CLI tool for automating [Tonnet Browser](https://github.com/TONresistor/Tonnet-Browser) over the Chrome DevTools Protocol. It can navigate .ton sites, read page content, interact with elements, and take screenshots. A persistent daemon process holds the CDP WebSocket connection between commands, so the browser stays alive across multiple invocations. Written from scratch in Go.
 
-## Table of contents
-
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Architecture](#architecture)
-- [Commands](#commands)
-- [Global flags](#global-flags)
-- [Platform notes](#platform-notes)
-- [Development](#development)
-- [License](#license)
-
 ## Installation
 
 ### As a skill (for AI agents)
