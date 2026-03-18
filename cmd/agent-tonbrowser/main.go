@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/alecthomas/kong"
@@ -16,13 +19,49 @@ import (
 
 var version = "dev" // injected via ldflags
 
+// ExitCode constants for semantic error reporting.
+const (
+	ExitOK           = 0
+	ExitGeneral      = 1
+	ExitNotFound     = 2
+	ExitDNSFail      = 3
+	ExitProxyDown    = 4
+	ExitAlreadyExists = 5
+)
+
+type cliError struct {
+	code int
+	msg  string
+}
+
+func (e *cliError) Error() string { return e.msg }
+func (e *cliError) ExitCode() int { return e.code }
+
+func exitErr(code int, format string, args ...any) error {
+	return &cliError{code: code, msg: fmt.Sprintf(format, args...)}
+}
+
 // Globals holds flags available on all commands.
 type Globals struct {
-	CDPPort int  `help:"CDP port to connect to" default:"9222" env:"AGENT_TONBROWSER_CDP_PORT"`
-	Tab     int  `help:"Target tab index (0=main UI, 1=first .ton tab, etc.)" default:"-1" env:"AGENT_TONBROWSER_TAB"`
-	JSON    bool `help:"Output in JSON format" env:"AGENT_TONBROWSER_JSON"`
-	Debug   bool `help:"Debug output" env:"AGENT_TONBROWSER_DEBUG"`
-	Timeout int  `help:"Action timeout in milliseconds" default:"30000" env:"AGENT_TONBROWSER_TIMEOUT"`
+	CDPPort int    `help:"CDP port to connect to" default:"9222" env:"AGENT_TONBROWSER_CDP_PORT"`
+	Tab     int    `help:"Target tab index (0=main UI, 1=first .ton tab, etc.)" default:"-1" env:"AGENT_TONBROWSER_TAB"`
+	TabURL  string `help:"Select tab by URL pattern (e.g. '*.ton')" default:"" env:"AGENT_TONBROWSER_TAB_URL"`
+	JSON    bool   `help:"Output in JSON format" env:"AGENT_TONBROWSER_JSON"`
+	Debug   bool   `help:"Debug output" env:"AGENT_TONBROWSER_DEBUG"`
+	Timeout int    `help:"Action timeout in milliseconds" default:"30000" env:"AGENT_TONBROWSER_TIMEOUT"`
+}
+
+// resolveTab returns the effective tab index: if --tab-url is set, connect to the matching
+// tab and return -1 (daemon's current tab); otherwise return globals.Tab.
+func resolveTab(globals *Globals) int {
+	if globals.TabURL != "" {
+		if err := daemon.EnsureDaemon(); err == nil {
+			if err := daemon.ConnectByURL(globals.CDPPort, globals.TabURL); err == nil {
+				return -1
+			}
+		}
+	}
+	return globals.Tab
 }
 
 // CLI is the root kong struct.
@@ -34,7 +73,7 @@ type CLI struct {
 	Launch     LaunchCmd     `cmd:"" help:"Launch Tonnet Browser with CDP enabled"`
 	Close      CloseCmd      `cmd:"" help:"Close the running Tonnet Browser"`
 	Status     StatusCmd     `cmd:"" help:"Show browser and proxy status"`
-	Connect    ConnectCmd    `cmd:"" help:"Connect daemon to a running browser via CDP port"`
+	Connect    ConnectCmd    `cmd:"" help:"Connect daemon to a running browser via CDP port (explicit port/tab selection)"`
 	Goto       GotoCmd       `cmd:"" help:"Navigate to a .ton URL" aliases:"open,navigate"`
 	Back       BackCmd       `cmd:"" help:"Go back in history"`
 	Forward    ForwardCmd    `cmd:"" help:"Go forward in history"`
@@ -50,6 +89,7 @@ type CLI struct {
 	Scroll     ScrollCmd     `cmd:"" help:"Scroll the page"`
 	Wait       WaitCmd       `cmd:"" help:"Wait for element, time, or page load"`
 	Eval       EvalCmd       `cmd:"" help:"Execute JavaScript"`
+	DNS        DNSCmd        `cmd:"" help:"TON DNS utilities"`
 	Version    VersionCmd    `cmd:"" help:"Show version"`
 }
 
@@ -292,24 +332,25 @@ type GotoCmd struct {
 
 func (c *GotoCmd) Run(globals *Globals) error {
 	if !ton.IsTonURL(c.URL) {
-		return fmt.Errorf("not a .ton URL: %q", c.URL)
+		return exitErr(ExitGeneral, "not a .ton URL: %q", c.URL)
 	}
 
 	proxyRunning, _, _ := ton.ProxyStatus()
 	if !proxyRunning {
-		return fmt.Errorf("tonnet-proxy is not running — start Tonnet Browser first")
+		return exitErr(ExitProxyDown, "tonnet-proxy is not running — start Tonnet Browser first")
 	}
 
 	normalized := ton.NormalizeURL(c.URL)
+	tab := resolveTab(globals)
 
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Navigate(globals.Tab, normalized); err != nil {
+	if err := daemon.Navigate(tab, normalized); err != nil {
 		return fmt.Errorf("failed to navigate: %w", err)
 	}
-	currentURL, _ := daemon.GetURL(globals.Tab)
-	title, _ := daemon.GetTitle(globals.Tab)
+	currentURL, _ := daemon.GetURL(tab)
+	title, _ := daemon.GetTitle(tab)
 
 	if globals.JSON {
 		return printJSON(map[string]string{"url": currentURL, "title": title})
@@ -323,10 +364,11 @@ func (c *GotoCmd) Run(globals *Globals) error {
 type BackCmd struct{}
 
 func (c *BackCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Back(globals.Tab); err != nil {
+	if err := daemon.Back(tab); err != nil {
 		return fmt.Errorf("failed to go back: %w", err)
 	}
 	if globals.JSON {
@@ -340,10 +382,11 @@ func (c *BackCmd) Run(globals *Globals) error {
 type ForwardCmd struct{}
 
 func (c *ForwardCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Forward(globals.Tab); err != nil {
+	if err := daemon.Forward(tab); err != nil {
 		return fmt.Errorf("failed to go forward: %w", err)
 	}
 	if globals.JSON {
@@ -357,10 +400,11 @@ func (c *ForwardCmd) Run(globals *Globals) error {
 type ReloadCmd struct{}
 
 func (c *ReloadCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Reload(globals.Tab); err != nil {
+	if err := daemon.Reload(tab); err != nil {
 		return fmt.Errorf("failed to reload: %w", err)
 	}
 	if globals.JSON {
@@ -380,10 +424,11 @@ type SnapshotCmd struct {
 }
 
 func (c *SnapshotCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	text, err := daemon.Snapshot(globals.Tab, c.Interactive, c.Compact, c.Depth)
+	text, err := daemon.Snapshot(tab, c.Interactive, c.Compact, c.Depth)
 	if err != nil {
 		return fmt.Errorf("failed to snapshot: %w", err)
 	}
@@ -396,15 +441,31 @@ func (c *SnapshotCmd) Run(globals *Globals) error {
 
 // ScreenshotCmd takes a screenshot.
 type ScreenshotCmd struct {
-	Path string `arg:"" optional:"" help:"Output file path (auto-generated if empty)"`
-	Full bool   `short:"f" help:"Full page screenshot"`
+	Path     string `arg:"" optional:"" help:"Output file path (auto-generated if empty)"`
+	Full     bool   `short:"f" help:"Full page screenshot"`
+	Annotate bool   `short:"a" help:"Add numbered labels on interactive elements"`
 }
 
 func (c *ScreenshotCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	outPath, err := daemon.Screenshot(globals.Tab, c.Path, c.Full)
+	if c.Annotate {
+		outPath, labels, err := daemon.AnnotatedScreenshot(tab, c.Path)
+		if err != nil {
+			return fmt.Errorf("failed to take annotated screenshot: %w", err)
+		}
+		if globals.JSON {
+			return printJSON(map[string]any{"path": outPath, "labels": labels})
+		}
+		fmt.Printf("Screenshot saved: %s\n", outPath)
+		var indented bytes.Buffer
+		json.Indent(&indented, labels, "", "  ")
+		fmt.Println(indented.String())
+		return nil
+	}
+	outPath, err := daemon.Screenshot(tab, c.Path, c.Full)
 	if err != nil {
 		return fmt.Errorf("failed to take screenshot: %w", err)
 	}
@@ -421,6 +482,7 @@ type GetCmd struct {
 }
 
 func (c *GetCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
@@ -428,9 +490,9 @@ func (c *GetCmd) Run(globals *Globals) error {
 	var err error
 	switch c.What {
 	case "url":
-		value, err = daemon.GetURL(globals.Tab)
+		value, err = daemon.GetURL(tab)
 	case "title":
-		value, err = daemon.GetTitle(globals.Tab)
+		value, err = daemon.GetTitle(tab)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to get %s: %w", c.What, err)
@@ -483,10 +545,11 @@ type ClickCmd struct {
 }
 
 func (c *ClickCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Click(globals.Tab, c.Selector); err != nil {
+	if err := daemon.Click(tab, c.Selector); err != nil {
 		return fmt.Errorf("failed to click: %w", err)
 	}
 	if globals.JSON {
@@ -503,10 +566,11 @@ type FillCmd struct {
 }
 
 func (c *FillCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Fill(globals.Tab, c.Selector, c.Text); err != nil {
+	if err := daemon.Fill(tab, c.Selector, c.Text); err != nil {
 		return fmt.Errorf("failed to fill: %w", err)
 	}
 	if globals.JSON {
@@ -523,10 +587,11 @@ type TypeCmd struct {
 }
 
 func (c *TypeCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.TypeText(globals.Tab, c.Selector, c.Text); err != nil {
+	if err := daemon.TypeText(tab, c.Selector, c.Text); err != nil {
 		return fmt.Errorf("failed to type: %w", err)
 	}
 	if globals.JSON {
@@ -542,10 +607,11 @@ type PressCmd struct {
 }
 
 func (c *PressCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Press(globals.Tab, c.Key); err != nil {
+	if err := daemon.Press(tab, c.Key); err != nil {
 		return fmt.Errorf("failed to press key: %w", err)
 	}
 	if globals.JSON {
@@ -562,10 +628,11 @@ type ScrollCmd struct {
 }
 
 func (c *ScrollCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Scroll(globals.Tab, c.Direction, c.Pixels); err != nil {
+	if err := daemon.Scroll(tab, c.Direction, c.Pixels); err != nil {
 		return fmt.Errorf("failed to scroll: %w", err)
 	}
 	if globals.JSON {
@@ -581,10 +648,11 @@ type WaitCmd struct {
 }
 
 func (c *WaitCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	if err := daemon.Wait(globals.Tab, c.Target); err != nil {
+	if err := daemon.Wait(tab, c.Target); err != nil {
 		return fmt.Errorf("failed to wait: %w", err)
 	}
 	if globals.JSON {
@@ -600,10 +668,11 @@ type EvalCmd struct {
 }
 
 func (c *EvalCmd) Run(globals *Globals) error {
+	tab := resolveTab(globals)
 	if err := daemon.EnsureDaemon(); err != nil {
 		return err
 	}
-	result, err := daemon.Eval(globals.Tab, c.Script)
+	result, err := daemon.Eval(tab, c.Script)
 	if err != nil {
 		return fmt.Errorf("failed to eval: %w", err)
 	}
@@ -611,6 +680,33 @@ func (c *EvalCmd) Run(globals *Globals) error {
 		return printJSON(map[string]string{"result": result})
 	}
 	fmt.Println(result)
+	return nil
+}
+
+// ─── DNS ──────────────────────────────────────────────────────────────────────
+
+// DNSCmd groups TON DNS subcommands.
+type DNSCmd struct {
+	Resolve DNSResolveCmd `cmd:"" help:"Resolve a .ton domain"`
+}
+
+// DNSResolveCmd resolves a .ton domain via the TON DNS system.
+type DNSResolveCmd struct {
+	Domain string `arg:"" help:"The .ton domain to resolve (e.g. foundation.ton)"`
+}
+
+func (c *DNSResolveCmd) Run(globals *Globals) error {
+	result, err := daemon.DNSResolve(c.Domain)
+	if err != nil {
+		return exitErr(ExitDNSFail, "dns resolve: %v", err)
+	}
+	if globals.JSON {
+		fmt.Println(string(result))
+		return nil
+	}
+	var indented bytes.Buffer
+	json.Indent(&indented, result, "", "  ")
+	fmt.Println(indented.String())
 	return nil
 }
 
@@ -637,5 +733,12 @@ func main() {
 		kong.UsageOnError(),
 	)
 	err := ctx.Run(&cli.Globals)
-	ctx.FatalIfErrorf(err)
+	if err != nil {
+		var cliErr *cliError
+		if errors.As(err, &cliErr) {
+			fmt.Fprintln(os.Stderr, err.Error())
+			os.Exit(cliErr.ExitCode())
+		}
+		ctx.FatalIfErrorf(err)
+	}
 }

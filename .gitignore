@@ -1,5 +1,5 @@
-# Binary
-agent-tonbrowser
+# Binary (root only, not cmd/agent-tonbrowser/ directory)
+/agent-tonbrowser
 bin/
 dist/
 
